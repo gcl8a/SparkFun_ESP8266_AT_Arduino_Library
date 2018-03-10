@@ -218,7 +218,7 @@ int16_t ESP8266Class::setMode(esp8266_wifi_mode mode)
 
 int16_t ESP8266Class::connect(const char * ssid)
 {
-	connect(ssid, "");
+	return connect(ssid, "");
 }
 
 // connect()
@@ -668,7 +668,7 @@ int8_t ESP8266Class::digitalRead(uint8_t pin)
 
 size_t ESP8266Class::write(uint8_t c)
 {
-	_serial->write(c);
+	return _serial->write(c);
 }
 
 int ESP8266Class::available()

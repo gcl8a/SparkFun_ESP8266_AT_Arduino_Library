@@ -47,7 +47,7 @@ Distributed as-is; no warranty is given.
 
 static SoftwareSerial swSerial(ESP8266_SW_TX, ESP8266_SW_RX);
 
-typedef enum esp8266_cmd_rsp {
+enum esp8266_cmd_rsp {
 	ESP8266_CMD_BAD = -5,
 	ESP8266_RSP_MEMORY_ERR = -4,
 	ESP8266_RSP_FAIL = -3,
@@ -56,49 +56,49 @@ typedef enum esp8266_cmd_rsp {
 	ESP8266_RSP_SUCCESS = 0
 };
 
-typedef enum esp8266_wifi_mode {
+enum esp8266_wifi_mode {
 	ESP8266_MODE_STA = 1,
 	ESP8266_MODE_AP = 2,
 	ESP8266_MODE_STAAP = 3
 };
 
-typedef enum esp8266_command_type {
+enum esp8266_command_type {
 	ESP8266_CMD_QUERY,
 	ESP8266_CMD_SETUP,
 	ESP8266_CMD_EXECUTE
 };
 
-typedef enum esp8266_encryption {
+enum esp8266_encryption {
 	ESP8266_ECN_OPEN,
 	ESP8266_ECN_WPA_PSK,
 	ESP8266_ECN_WPA2_PSK,
 	ESP8266_ECN_WPA_WPA2_PSK
 };
 
-typedef enum esp8266_connect_status {
+enum esp8266_connect_status {
 	ESP8266_STATUS_GOTIP = 2,
 	ESP8266_STATUS_CONNECTED = 3,
 	ESP8266_STATUS_DISCONNECTED = 4,
 	ESP8266_STATUS_NOWIFI = 5	
 };
 
-typedef enum esp8266_serial_port {
+enum esp8266_serial_port {
 	ESP8266_SOFTWARE_SERIAL,
 	ESP8266_HARDWARE_SERIAL
 };
 
-typedef enum esp8266_socket_state {
+enum esp8266_socket_state {
 	AVAILABLE = 0,
 	TAKEN = 1,
 };
 
-typedef enum esp8266_connection_type {
+enum esp8266_connection_type {
 	ESP8266_TCP,
 	ESP8266_UDP,
 	ESP8266_TYPE_UNDEFINED
 };
 
-typedef enum esp8266_tetype {
+enum esp8266_tetype {
 	ESP8266_CLIENT,
 	ESP8266_SERVER
 };
