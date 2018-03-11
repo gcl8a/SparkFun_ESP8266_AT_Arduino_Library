@@ -21,17 +21,12 @@ Distributed as-is; no warranty is given.
 #ifndef _SPARKFUNESP8266_H_
 #define _SPARKFUNESP8266_H_
 
+
 #include <Arduino.h>
-#include <SoftwareSerial.h>
 #include <IPAddress.h>
 #include "SparkFunESP8266Client.h"
 #include "SparkFunESP8266Server.h"
 
-/////////////////////
-// Pin Definitions //
-/////////////////////
-#define ESP8266_SW_RX	9	// ESP8266 UART0 RXI goes to Arduino pin 9
-#define ESP8266_SW_TX	8	// ESP8266 UART0 TXO goes to Arduino pin 8
 
 ///////////////////////////////
 // Command Response Timeouts //
@@ -44,8 +39,6 @@ Distributed as-is; no warranty is given.
 
 #define ESP8266_MAX_SOCK_NUM 5
 #define ESP8266_SOCK_NOT_AVAIL 255
-
-static SoftwareSerial swSerial(ESP8266_SW_TX, ESP8266_SW_RX);
 
 enum esp8266_cmd_rsp {
 	ESP8266_CMD_BAD = -5,
@@ -123,8 +116,8 @@ class ESP8266Class : public Stream
 public:
 	ESP8266Class();
 	
-	bool begin(unsigned long baudRate = 9600, esp8266_serial_port serialPort = ESP8266_SOFTWARE_SERIAL);
-	
+    bool begin(unsigned long baudRate, Stream* ser);
+
 	///////////////////////
 	// Basic AT Commands //
 	///////////////////////

@@ -28,7 +28,7 @@ Distributed as-is; no warranty is given.
 ////////////////////////
 // Buffer Definitions //
 ////////////////////////
-#define ESP8266_RX_BUFFER_LEN 128 // Number of bytes in the serial receive buffer
+#define ESP8266_RX_BUFFER_LEN 512 // Number of bytes in the serial receive buffer
 char esp8266RxBuffer[ESP8266_RX_BUFFER_LEN];
 unsigned int bufferHead; // Holds position of latest byte placed in buffer.
 
@@ -42,34 +42,24 @@ ESP8266Class::ESP8266Class()
 		_state[i] = AVAILABLE;
 }
 
-bool ESP8266Class::begin(unsigned long baudRate, esp8266_serial_port serialPort)
+//up to the user to start the Serial of his or her choice
+bool ESP8266Class::begin(unsigned long baudRate, Stream* ser)
 {
-	_baud = baudRate;
-	if (serialPort == ESP8266_SOFTWARE_SERIAL)
-	{
-		swSerial.begin(baudRate);
-		_serial = &swSerial;
-	}
-	else if (serialPort == ESP8266_HARDWARE_SERIAL)
-	{
-		Serial.begin(baudRate);
-		_serial = &Serial;
-	}
-	
-	if (test())
-	{
-		//if (!setTransferMode(0))
-		//	return false;
-		if (!setMux(1))
-			return false;
+    _baud = baudRate;
+    _serial = ser;
+    
+    if (test())
+    {
+        if (!setMux(1))
+            return false;
 #ifdef ESP8266_DISABLE_ECHO
-		if (!echo(false))
-			return false;
+        if (!echo(false))
+            return false;
 #endif
-		return true;
-	}
-	
-	return false;
+        return true;
+    }
+    
+    return false;
 }
 
 ///////////////////////

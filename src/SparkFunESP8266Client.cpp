@@ -89,7 +89,7 @@ int ESP8266Client::available()
 	if (available == 0)
 	{
 		// Delay for the amount of time it'd take to receive one character
-		delayMicroseconds((1 / esp8266._baud) * 10 * 1E6);
+		delayMicroseconds((10 / esp8266._baud) * 10 * 1E6);
 		// Check again just to be sure:
 		available = esp8266.available();
 	}

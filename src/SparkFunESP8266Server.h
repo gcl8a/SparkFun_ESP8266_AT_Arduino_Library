@@ -22,7 +22,6 @@ Distributed as-is; no warranty is given.
 #define _SPARKFUNESP8266SERVER_H_
 
 #include <Arduino.h>
-#include <SoftwareSerial.h>
 #include <IPAddress.h>
 #include "Server.h"
 #include "SparkFunESP8266WiFi.h"

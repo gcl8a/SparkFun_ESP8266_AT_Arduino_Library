@@ -22,7 +22,6 @@ Distributed as-is; no warranty is given.
 #define _SPARKFUNESP8266CLIENT_H_
 
 #include <Arduino.h>
-#include <SoftwareSerial.h>
 #include <IPAddress.h>
 #include "Client.h"
 #include "SparkFunESP8266WiFi.h"
