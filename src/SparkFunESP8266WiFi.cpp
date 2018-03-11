@@ -107,7 +107,7 @@ bool ESP8266Class::setBaud(unsigned long baud)
 	baud = constrain(baud, 110, 115200);
 	
 	// Put parameters into string
-	sprintf(parameters, "%d,8,1,0,0", baud);
+	sprintf(parameters, "%lu,8,1,0,0", baud);
 	
 	// Send AT+UART=baud,databits,stopbits,parity,flowcontrol
 	sendCommand(ESP8266_UART, ESP8266_CMD_SETUP, parameters);
@@ -732,6 +732,8 @@ int16_t ESP8266Class::readForResponses(const char * pass, const char * fail, uns
 		if (_serial->available()) // If data is available on UART RX
 		{
 			received += readByteToBuffer();
+            
+            //this is painful: searching the buffer every freakin' character?
 			if (searchBuffer(pass))	// Search the buffer for goodRsp
 				return received;	// Return how number of chars read
 			if (searchBuffer(fail))
@@ -783,6 +785,8 @@ char * ESP8266Class::searchBuffer(const char * test)
 			
 		}
 	}
+    
+    return '\0'; //have to return something!
 }
 
 ESP8266Class esp8266;
