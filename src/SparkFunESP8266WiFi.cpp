@@ -501,27 +501,125 @@ int16_t ESP8266Class::tcpConnect(uint8_t linkID, const char * destination, uint1
 	return 1;
 }
 
+/*
+ * tcpReceive captures input line-by-line
+ */
+
+#define REC_TIMEOUT_PERIOD 2000
+
+int16_t ESP8266Class::tcpReceive(uint8_t linkID, char* buffer, uint16_t buffer_len)
+{
+    clearBuffer();
+    uint32_t lastRead = millis();
+    
+    while(millis() - lastRead < REC_TIMEOUT_PERIOD)
+    {
+        if(_serial->available())
+        {
+            char c = _serial->read();
+            lastRead = millis();
+            
+            esp8266RxBuffer[bufferHead++] = c;
+            if(bufferHead == ESP8266_RX_BUFFER_LEN - 1) return ESP8266_RSP_MEMORY_ERR; //need to make smarter
+            char* ipd = NULL;
+            
+            switch(recState)
+            {
+                case ESP8266_REC_WAITING: //waiting for either an IPD signal or CLOSED (anything else???)
+                    //search for IPD
+                    ipd = strstr(esp8266RxBuffer, "+IPD");
+                    if(ipd)
+                    {
+                        //we have an IPD signal, so clear the buffer and get the byte count
+                        clearBuffer();
+                        recState = ESP8266_REC_IPD;
+                    }
+                    
+                    else if(c == '\n') //we've gotten a complete line with no IPD => done
+                    {
+                        //see if we got a CLOSED signal
+                        if(strstr(esp8266RxBuffer, "CLOSED"))
+                        {
+                            //socket is closed for us
+                            recState = ESP8266_REC_CLOSED;
+                            return 0; ///////????
+                        }
+                        
+                        //otherwise, just return whatever we have?
+                        else
+                        {
+                            memset(buffer, '\0', buffer_len);
+                            memcpy(buffer, esp8266RxBuffer, strlen(esp8266RxBuffer)); //CAREFUL on length!!!
+                            
+                            return strlen(esp8266RxBuffer);
+//
+//                            return ESP8266_RSP_UNKNOWN; //if no close signal, return WAIT_CLOSE????
+                        }
+                    }
+                    break;
+                
+                case ESP8266_REC_IPD: //need to get the character count
+                    // for the moment, assume string has the form: +IPD,0,###:
+                    // where number of # digits is unknown
+                    if(strstr(esp8266RxBuffer, ":")) //a bit ugly, but should work
+                    {
+                        tcpRecvCount = atoi(&esp8266RxBuffer[3]); //automatically breaks out at ':'
+                        clearBuffer();
+                        recState = ESP8266_REC_RECEIVING;
+                    }
+                    break;
+                    
+                case ESP8266_REC_RECEIVING:
+                    tcpRecvCount--;
+                    if(!tcpRecvCount) //need to look for another IPD or we're done
+                    {
+                        recState = ESP8266_REC_WAITING;
+                    }
+                    
+                    if(c == '\n' || !tcpRecvCount) //we've gotten a complete line, or we're done, so return it
+                    {
+                        memset(buffer, '\0', buffer_len);
+                        memcpy(buffer, esp8266RxBuffer, strlen(esp8266RxBuffer)); //CAREFUL on length!!!
+                        
+                        return strlen(esp8266RxBuffer);
+                    }
+                    break;
+                    
+                case ESP8266_REC_CLOSED: //anything special here?
+                default:
+                    return ESP8266_RSP_FAIL; //something is seriously wrong if we get here...
+            }
+        }
+    }
+    
+    return ESP8266_RSP_TIMEOUT;
+}
+
 int16_t ESP8266Class::tcpSend(uint8_t linkID, const uint8_t *buf, size_t size)
 {
-	if (size > 2048)
-		return ESP8266_CMD_BAD;
-	char params[8];
-	sprintf(params, "%d,%d", linkID, size);
-	sendCommand(ESP8266_TCP_SEND, ESP8266_CMD_SETUP, params);
-	
-	int16_t rsp = readForResponses(RESPONSE_OK, RESPONSE_ERROR, COMMAND_RESPONSE_TIMEOUT);
-	//if (rsp > 0)
-	if (rsp != ESP8266_RSP_FAIL)
-	{
-		print((const char *)buf);
-		
-		rsp = readForResponse("SEND OK", COMMAND_RESPONSE_TIMEOUT);
-		
-		if (rsp > 0)
-			return size;
-	}
-	
-	return rsp;
+    //need to be put in a better spot...
+    tcpRecvCount = 0;
+    recState = ESP8266_REC_WAITING;
+    
+    if (size > 2048)
+        return ESP8266_CMD_BAD;
+    char params[8];
+    sprintf(params, "%d,%d", linkID, size);
+    sendCommand(ESP8266_TCP_SEND, ESP8266_CMD_SETUP, params);
+    
+    int16_t rsp = readForResponses(RESPONSE_OK, RESPONSE_ERROR, COMMAND_RESPONSE_TIMEOUT);
+    //if (rsp > 0)
+    if (rsp != ESP8266_RSP_FAIL)
+    {
+        print((const char *)buf);
+        
+        rsp = readForResponse("SEND OK", COMMAND_RESPONSE_TIMEOUT);
+        
+        if (rsp > 0)
+            return size;
+    }
+    
+    return rsp;
 }
 
 int16_t ESP8266Class::close(uint8_t linkID)
@@ -701,14 +799,15 @@ void ESP8266Class::sendCommand(const char * cmd, enum esp8266_command_type type,
 
 int16_t ESP8266Class::readForResponse(const char * rsp, unsigned int timeout)
 {
-	unsigned long timeIn = millis();	// Timestamp coming into function
+	unsigned long lastRead = millis();	// Timestamp coming into function
 	unsigned int received = 0; // received keeps track of number of chars read
 	
 	clearBuffer();	// Clear the class receive buffer (esp8266RxBuffer)
-	while (timeIn + timeout > millis()) // While we haven't timed out
+	while (millis() - lastRead < timeout) // While we haven't timed out
 	{
 		if (_serial->available()) // If data is available on UART RX
 		{
+            lastRead = millis();
 			received += readByteToBuffer();
 			if (searchBuffer(rsp))	// Search the buffer for goodRsp
 				return received;	// Return how number of chars read
@@ -716,7 +815,11 @@ int16_t ESP8266Class::readForResponse(const char * rsp, unsigned int timeout)
 	}
 	
 	if (received > 0) // If we received any characters
+    {
+        SerialUSB.print("error: ");
+        SerialUSB.println(esp8266RxBuffer);
 		return ESP8266_RSP_UNKNOWN; // Return unkown response error code
+    }
 	else // If we haven't received any characters
 		return ESP8266_RSP_TIMEOUT; // Return the timeout error code
 }
