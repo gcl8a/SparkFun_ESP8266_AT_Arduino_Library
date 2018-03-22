@@ -33,15 +33,19 @@ Distributed as-is; no warranty is given.
 ///////////////////////////////
 #define COMMAND_RESPONSE_TIMEOUT 1000
 #define COMMAND_PING_TIMEOUT 3000
-#define WIFI_CONNECT_TIMEOUT 30000
+#define WIFI_CONNECT_TIMEOUT 10000
 #define COMMAND_RESET_TIMEOUT 5000
-#define CLIENT_CONNECT_TIMEOUT 5000
+#define CLIENT_CONNECT_TIMEOUT 3000
+#define TCP_RECEIVE_TIMEOUT 500
+
+#define ESP8266_RX_BUFFER_LEN 128 // Number of bytes in the serial receive buffer
 
 #define ESP8266_MAX_SOCK_NUM 5
 #define ESP8266_SOCK_NOT_AVAIL 255
 
 enum esp8266_cmd_rsp {
-	ESP8266_CMD_BAD = -5,
+    ESP8266_BUF_OVF = -6,
+    ESP8266_CMD_BAD = -5,
 	ESP8266_RSP_MEMORY_ERR = -4,
 	ESP8266_RSP_FAIL = -3,
 	ESP8266_RSP_UNKNOWN = -2,
@@ -125,6 +129,14 @@ protected:
     int16_t tcpRecvCount = 0; //for tcpReceive(); must be signed to accommodate error codes
     esp8266_rec_state recState = ESP8266_REC_CLOSED;
     
+    ////////////////////////
+    // Buffer Definitions //
+    ////////////////////////
+    char esp8266RxBuffer[ESP8266_RX_BUFFER_LEN];
+    uint16_t bufferHead = 0; // Holds position of latest byte placed in buffer.
+    
+    int16_t _state[ESP8266_MAX_SOCK_NUM];
+    
 public:
 	ESP8266Class();
 	
@@ -159,7 +171,7 @@ public:
 	int16_t updateStatus();
 	int16_t tcpConnect(uint8_t linkID, const char * destination, uint16_t port, uint16_t keepAlive);
 	int16_t tcpSend(uint8_t linkID, const uint8_t *buf, size_t size);
-    int16_t tcpReceive(uint8_t linkID, char* buffer, uint16_t buffer_len);
+    int16_t tcpReceive(uint8_t linkID, char* buffer, uint16_t buffer_len, uint32_t timeout = TCP_RECEIVE_TIMEOUT);
 
 	int16_t close(uint8_t linkID);
 	int16_t setTransferMode(uint8_t mode);
@@ -187,12 +199,10 @@ public:
 	friend class ESP8266Client;
 	friend class ESP8266Server;
 
-    int16_t _state[ESP8266_MAX_SOCK_NUM];
-	
 protected:
     Stream* _serial;
 	unsigned long _baud;
-	
+    
 private:
 	//////////////////////////
 	// Command Send/Receive //
@@ -209,8 +219,9 @@ private:
 	
 	/// readByteToBuffer() - Read first byte from UART receive buffer
 	/// and store it in rxBuffer.
-	unsigned int readByteToBuffer();
-	
+    char readByteToBuffer(int8_t&);
+    uint8_t readByteToBuffer();
+    
 	/// searchBuffer([test]) - Search buffer for string [test]
 	/// Success: Returns pointer to beginning of string
 	/// Fail: returns NULL

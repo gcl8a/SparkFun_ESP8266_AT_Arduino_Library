@@ -67,10 +67,10 @@ int ESP8266Client::connect(const char* host, uint16_t port, uint32_t keepAlive)
     if (_socket != ESP8266_SOCK_NOT_AVAIL)
     {
 		esp8266._state[_socket] = TAKEN;
-		int16_t rsp = esp8266.tcpConnect(_socket, host, port, keepAlive);
-		
-		return rsp;
+		return esp8266.tcpConnect(_socket, host, port, keepAlive);
 	}
+    
+    else return 0;
 }
 
 size_t ESP8266Client::write(uint8_t c)

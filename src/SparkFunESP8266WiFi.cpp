@@ -25,13 +25,6 @@ Distributed as-is; no warranty is given.
 
 #define ESP8266_DISABLE_ECHO
 
-////////////////////////
-// Buffer Definitions //
-////////////////////////
-#define ESP8266_RX_BUFFER_LEN 512 // Number of bytes in the serial receive buffer
-char esp8266RxBuffer[ESP8266_RX_BUFFER_LEN];
-unsigned int bufferHead; // Holds position of latest byte placed in buffer.
-
 ////////////////////
 // Initialization //
 ////////////////////
@@ -501,100 +494,6 @@ int16_t ESP8266Class::tcpConnect(uint8_t linkID, const char * destination, uint1
 	return 1;
 }
 
-/*
- * tcpReceive captures input line-by-line
- */
-
-#define REC_TIMEOUT_PERIOD 2000
-
-int16_t ESP8266Class::tcpReceive(uint8_t linkID, char* buffer, uint16_t buffer_len)
-{
-    clearBuffer();
-    uint32_t lastRead = millis();
-    
-    while(millis() - lastRead < REC_TIMEOUT_PERIOD)
-    {
-        if(_serial->available())
-        {
-            char c = _serial->read();
-            lastRead = millis();
-            
-            esp8266RxBuffer[bufferHead++] = c;
-            if(bufferHead == ESP8266_RX_BUFFER_LEN - 1) return ESP8266_RSP_MEMORY_ERR; //need to make smarter
-            char* ipd = NULL;
-            
-            switch(recState)
-            {
-                case ESP8266_REC_WAITING: //waiting for either an IPD signal or CLOSED (anything else???)
-                    //search for IPD
-                    ipd = strstr(esp8266RxBuffer, "+IPD");
-                    if(ipd)
-                    {
-                        //we have an IPD signal, so clear the buffer and get the byte count
-                        clearBuffer();
-                        recState = ESP8266_REC_IPD;
-                    }
-                    
-                    else if(c == '\n') //we've gotten a complete line with no IPD => done
-                    {
-                        //see if we got a CLOSED signal
-                        if(strstr(esp8266RxBuffer, "CLOSED"))
-                        {
-                            //socket is closed for us
-                            recState = ESP8266_REC_CLOSED;
-                            return 0; ///////????
-                        }
-                        
-                        //otherwise, just return whatever we have?
-                        else
-                        {
-                            memset(buffer, '\0', buffer_len);
-                            memcpy(buffer, esp8266RxBuffer, strlen(esp8266RxBuffer)); //CAREFUL on length!!!
-                            
-                            return strlen(esp8266RxBuffer);
-//
-//                            return ESP8266_RSP_UNKNOWN; //if no close signal, return WAIT_CLOSE????
-                        }
-                    }
-                    break;
-                
-                case ESP8266_REC_IPD: //need to get the character count
-                    // for the moment, assume string has the form: +IPD,0,###:
-                    // where number of # digits is unknown
-                    if(strstr(esp8266RxBuffer, ":")) //a bit ugly, but should work
-                    {
-                        tcpRecvCount = atoi(&esp8266RxBuffer[3]); //automatically breaks out at ':'
-                        clearBuffer();
-                        recState = ESP8266_REC_RECEIVING;
-                    }
-                    break;
-                    
-                case ESP8266_REC_RECEIVING:
-                    tcpRecvCount--;
-                    if(!tcpRecvCount) //need to look for another IPD or we're done
-                    {
-                        recState = ESP8266_REC_WAITING;
-                    }
-                    
-                    if(c == '\n' || !tcpRecvCount) //we've gotten a complete line, or we're done, so return it
-                    {
-                        memset(buffer, '\0', buffer_len);
-                        memcpy(buffer, esp8266RxBuffer, strlen(esp8266RxBuffer)); //CAREFUL on length!!!
-                        
-                        return strlen(esp8266RxBuffer);
-                    }
-                    break;
-                    
-                case ESP8266_REC_CLOSED: //anything special here?
-                default:
-                    return ESP8266_RSP_FAIL; //something is seriously wrong if we get here...
-            }
-        }
-    }
-    
-    return ESP8266_RSP_TIMEOUT;
-}
-
 int16_t ESP8266Class::tcpSend(uint8_t linkID, const uint8_t *buf, size_t size)
 {
     //need to be put in a better spot...
@@ -620,6 +519,103 @@ int16_t ESP8266Class::tcpSend(uint8_t linkID, const uint8_t *buf, size_t size)
     }
     
     return rsp;
+}
+
+/*
+ * tcpReceive captures input line-by-line (almost -- it deals with +IPD commands separately)
+ */
+
+int16_t ESP8266Class::tcpReceive(uint8_t linkID, char* buffer, uint16_t buffer_len, uint32_t timeout)
+{
+    clearBuffer();
+    uint32_t lastRead = millis();
+    
+    while(millis() - lastRead < timeout)
+    {
+        if(_serial->available())
+        {
+            //read byte and check for overflow
+            int8_t errorCode = 0;
+            char c = readByteToBuffer(errorCode);
+            if(errorCode == ESP8266_BUF_OVF)
+            {
+                return ESP8266_BUF_OVF;
+            }
+
+            lastRead = millis();
+
+            char* ipd = NULL;
+            
+            switch(recState)
+            {
+                case ESP8266_REC_WAITING: //waiting for either an IPD signal or CLOSED (anything else???)
+                    //search for IPD
+                    ipd = strstr(esp8266RxBuffer, "+IPD");
+                    if(ipd)
+                    {
+                        //we have an IPD signal, so clear the buffer and prepare to get the byte count
+                        clearBuffer();
+                        recState = ESP8266_REC_IPD;
+                    }
+                    
+                    else if(c == '\n') //we've gotten a complete line with no IPD => done
+                    {
+                        //see if we got a CLOSED signal
+                        if(strstr(esp8266RxBuffer, "CLOSED"))
+                        {
+                            //socket is closed for us
+                            recState = ESP8266_REC_CLOSED;
+                            //TODO: should also clear the socket
+                            return 0; ///////????
+                        }
+                        
+                        //otherwise, just return whatever we have, which could be as little as \r\n
+                        //if there is nothing else, it'll timeout next time through
+                        else
+                        {
+                            memset(buffer, '\0', buffer_len);
+                            memcpy(buffer, esp8266RxBuffer, strlen(esp8266RxBuffer)); //CAREFUL on length!!!
+                            
+                            return strlen(esp8266RxBuffer);
+                        }
+                    }
+                    break;
+                    
+                case ESP8266_REC_IPD: //need to get the character count
+                    // for the moment, assume string has the form: +IPD,0,###:
+                    // where number of # digits is unknown
+                    if(strstr(esp8266RxBuffer, ":")) //a bit ugly, but should work to get up to the colon
+                    {
+                        tcpRecvCount = atoi(&esp8266RxBuffer[3]); //atoi automatically breaks out at ':'
+                        clearBuffer();
+                        recState = ESP8266_REC_RECEIVING; //switch to receiving data
+                    }
+                    break;
+                    
+                case ESP8266_REC_RECEIVING:
+                    tcpRecvCount--;
+                    if(!tcpRecvCount) //finished this block; need to check for another IPD
+                    {
+                        recState = ESP8266_REC_WAITING;
+                    }
+                    
+                    if(c == '\n' || !tcpRecvCount) //we've gotten a complete line, or we're done, so return buffer
+                    {
+                        memset(buffer, '\0', buffer_len);
+                        memcpy(buffer, esp8266RxBuffer, strlen(esp8266RxBuffer)); //CAREFUL on length!!!
+                        
+                        return strlen(esp8266RxBuffer);
+                    }
+                    break;
+                    
+                case ESP8266_REC_CLOSED: //anything special here?
+                default:
+                    return ESP8266_RSP_FAIL; //something is seriously wrong if we get here...
+            }
+        }
+    }
+    
+    return ESP8266_RSP_TIMEOUT;
 }
 
 int16_t ESP8266Class::close(uint8_t linkID)
@@ -766,7 +762,9 @@ int ESP8266Class::available()
 
 int ESP8266Class::read()
 {
-	return _serial->read();
+    int ch = _serial->read();
+    //Serial.print((char)ch);
+    return ch;
 }
 
 int ESP8266Class::peek()
@@ -816,8 +814,8 @@ int16_t ESP8266Class::readForResponse(const char * rsp, unsigned int timeout)
 	
 	if (received > 0) // If we received any characters
     {
-        SerialUSB.print("error: ");
-        SerialUSB.println(esp8266RxBuffer);
+//        SerialUSB.print("error: ");
+//        SerialUSB.println(esp8266RxBuffer);
 		return ESP8266_RSP_UNKNOWN; // Return unkown response error code
     }
 	else // If we haven't received any characters
@@ -859,37 +857,62 @@ void ESP8266Class::clearBuffer()
 	bufferHead = 0;
 }	
 
-unsigned int ESP8266Class::readByteToBuffer()
+//maybe try: char readByte(int8_t& error): return c; set error if needed
+//would need to find all calss to readByte, as this breaks some of the calls
+
+char ESP8266Class::readByteToBuffer(int8_t& errorCode) //add char*?
 {
-	// Read the data in
-	char c = _serial->read();
-	
-	// Store the data in the buffer
-	esp8266RxBuffer[bufferHead] = c;
-	//! TODO: Don't care if we overflow. Should we? Set a flag or something?
-	bufferHead = (bufferHead + 1) % ESP8266_RX_BUFFER_LEN;
-	
-	return 1;
+    // Read the data in
+    char c = _serial->read();
+    
+    // Store the data in the buffer
+    esp8266RxBuffer[bufferHead++] = c;
+    
+    if(bufferHead == ESP8266_RX_BUFFER_LEN - 1)
+    {
+        bufferHead--; //reached overflow; all new data will just overwrites at the end
+        errorCode = ESP8266_BUF_OVF; //let the caller know
+    }
+    errorCode = 0;
+    
+    return c;
+}
+
+uint8_t ESP8266Class::readByteToBuffer() //add char*?
+{
+    // Read the data in
+    char c = _serial->read();
+    
+    // Store the data in the buffer
+    esp8266RxBuffer[bufferHead++] = c;
+    
+    if(bufferHead == ESP8266_RX_BUFFER_LEN - 1)
+    {
+        bufferHead--; //reached overflow; all new data will just overwrites at the end
+        return ESP8266_BUF_OVF; //let the caller know
+    }
+    
+    return 1;
 }
 
 char * ESP8266Class::searchBuffer(const char * test)
 {
-	int bufferLen = strlen((const char *)esp8266RxBuffer);
-	// If our buffer isn't full, just do an strstr
-	if (bufferLen < ESP8266_RX_BUFFER_LEN)
-		return strstr((const char *)esp8266RxBuffer, test);
-	else
-	{	//! TODO
-		// If the buffer is full, we need to search from the end of the 
-		// buffer back to the beginning.
-		int testLen = strlen(test);
-		for (int i=0; i<ESP8266_RX_BUFFER_LEN; i++)
-		{
-			
-		}
-	}
-    
-    return '\0'; //have to return something!
+//    int bufferLen = strlen((const char *)esp8266RxBuffer);
+//    // If our buffer isn't full, just do an strstr
+//    if (bufferLen < ESP8266_RX_BUFFER_LEN)
+    return strstr(esp8266RxBuffer, test); //gcl: removed (const char*) cast -- not sure why it was needed
+//    else
+//    {    //! TODO
+//        // If the buffer is full, we need to search from the end of the 
+//        // buffer back to the beginning.
+//        int testLen = strlen(test);
+//        for (int i=0; i<ESP8266_RX_BUFFER_LEN; i++)
+//        {
+//            
+//        }
+//    }
+//    
+//    return '\0'; //have to return something!
 }
 
 ESP8266Class esp8266;
