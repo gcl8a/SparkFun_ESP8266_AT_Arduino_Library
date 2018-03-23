@@ -211,19 +211,19 @@ int16_t ESP8266Class::connect(const char * ssid)
 //    - Fail: <0 (esp8266_cmd_rsp)
 int16_t ESP8266Class::connect(const char * ssid, const char * pwd)
 {
-	_serial->print("AT");
-	_serial->print(ESP8266_CONNECT_AP);
-	_serial->print("=\"");
-	_serial->print(ssid);
-	_serial->print("\"");
+	/*_serial->*/print("AT");
+	/*_serial->*/print(ESP8266_CONNECT_AP);
+	/*_serial->*/print("=\"");
+	/*_serial->*/print(ssid);
+	/*_serial->*/print("\"");
 	if (pwd != NULL)
 	{
-		_serial->print(',');
-		_serial->print("\"");
-		_serial->print(pwd);
-		_serial->print("\"");
+		/*_serial->*/print(',');
+		/*_serial->*/print("\"");
+		/*_serial->*/print(pwd);
+		/*_serial->*/print("\"");
 	}
-	_serial->print("\r\n");
+	/*_serial->*/print("\r\n");
 	
 	return readForResponses(RESPONSE_OK, RESPONSE_FAIL, WIFI_CONNECT_TIMEOUT);
 }
@@ -752,6 +752,7 @@ int8_t ESP8266Class::digitalRead(uint8_t pin)
 
 size_t ESP8266Class::write(uint8_t c)
 {
+    //SerialUSB.print((char)c);
 	return _serial->write(c);
 }
 
@@ -763,7 +764,7 @@ int ESP8266Class::available()
 int ESP8266Class::read()
 {
     int ch = _serial->read();
-    //Serial.print((char)ch);
+    //SerialUSB.print((char)ch);
     return ch;
 }
 
@@ -783,16 +784,16 @@ void ESP8266Class::flush()
 
 void ESP8266Class::sendCommand(const char * cmd, enum esp8266_command_type type, const char * params)
 {
-	_serial->print("AT");
-	_serial->print(cmd);
+	/*_serial->*/print("AT");
+	/*_serial->*/print(cmd);
 	if (type == ESP8266_CMD_QUERY)
-		_serial->print('?');
+		/*_serial->*/print('?');
 	else if (type == ESP8266_CMD_SETUP)
 	{
-		_serial->print("=");
-		_serial->print(params);		
+		/*_serial->*/print("=");
+		/*_serial->*/print(params);
 	}
-	_serial->print("\r\n");
+	/*_serial->*/print("\r\n");
 }
 
 int16_t ESP8266Class::readForResponse(const char * rsp, unsigned int timeout)
@@ -863,7 +864,8 @@ void ESP8266Class::clearBuffer()
 char ESP8266Class::readByteToBuffer(int8_t& errorCode) //add char*?
 {
     // Read the data in
-    char c = _serial->read();
+    char c = /*_serial->*/read();
+    //SerialUSB.print(c);
     
     // Store the data in the buffer
     esp8266RxBuffer[bufferHead++] = c;
@@ -881,7 +883,7 @@ char ESP8266Class::readByteToBuffer(int8_t& errorCode) //add char*?
 uint8_t ESP8266Class::readByteToBuffer() //add char*?
 {
     // Read the data in
-    char c = _serial->read();
+    char c = /*_serial->*/read();
     
     // Store the data in the buffer
     esp8266RxBuffer[bufferHead++] = c;
