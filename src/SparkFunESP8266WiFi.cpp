@@ -450,19 +450,29 @@ int16_t ESP8266Class::tcpConnect(const char * destination, uint16_t port, uint16
 	return 1;
 }
 
-int16_t ESP8266Class::tcpSend(const char* buf, size_t size)
+int16_t ESP8266Class::tcpBeginTransmission(void)
 {
-    //need to be put in a better spot...
-    tcpRecvCount = 0;
-    recState = ESP8266_REC_WAITING;
-    
-    if (size > 2048)
-        return ESP8266_CMD_BAD;
-
     sendCommand(ESP8266_TCP_SEND);
+    
+    //ideally, would wait to see '>', but a short delay is sufficient
     delay(50);
+    
+    return 1;
+}
+
+int16_t ESP8266Class::tcpSendPacket(const char* buf, size_t size)
+{
+    if(size > 2048) return 0; //too big
     print((const char *)buf);
+
+    //need a short delay between packets
     delay(50);
+    
+    return 1;
+}
+
+int16_t ESP8266Class::tcpEndTransmission(void)
+{
     print("+++");
     
     return 1;
