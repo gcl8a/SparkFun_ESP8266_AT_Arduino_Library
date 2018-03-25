@@ -89,7 +89,7 @@ int ESP8266Client::available()
 	if (available == 0)
 	{
 		// Delay for the amount of time it'd take to receive one character
-		delayMicroseconds((10 / esp8266._baud) * 10 * 1E6);
+		delay(1);
 		// Check again just to be sure:
 		available = esp8266.available();
 	}
@@ -150,26 +150,4 @@ ESP8266Client::operator bool()
 	return connected();
 }
 
-// Private Methods
-uint8_t ESP8266Client::getFirstSocket()
-{
-	/*
-	for (int i = 0; i < ESP8266_MAX_SOCK_NUM; i++) 
-	{
-		if (esp8266._state[i] == AVAILABLE)
-		{
-			return i;
-		}
-	}
-	return ESP8266_SOCK_NOT_AVAIL;
-	*/
-	esp8266.updateStatus();
-	for (int i = 0; i < ESP8266_MAX_SOCK_NUM; i++) 
-	{
-		if (esp8266._status.ipstatus[i].linkID == 255)
-		{
-			return i;
-		}
-	}
-	return ESP8266_SOCK_NOT_AVAIL;
-}
+

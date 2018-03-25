@@ -38,7 +38,7 @@ ESP8266Class::ESP8266Class()
 //up to the user to start the Serial of his or her choice
 bool ESP8266Class::begin(unsigned long baudRate, Stream* ser)
 {
-    _baud = baudRate;
+    //_baud = baudRate;
     _serial = ser;
     
     if (test())
@@ -454,6 +454,49 @@ int16_t ESP8266Class::localMAC(char * mac)
 /////////////////////
 // TCP/IP Commands //
 /////////////////////
+ESP8266Client ESP8266Class::tcpConnect(const char * destination, uint16_t port, uint16_t keepAlive)
+{
+    if(state != ESP_CMD) return ESP8266Client(); //not in interactive command mode; don't even try
+    
+    //need to read mux state...for now, we're doing single cxn
+    
+    esp8266.updateStatus();
+
+//    if(mux == ESP_MUX_MULTI) return ESP8266Client();
+//    else
+    {
+            if(_status.ipstatus[0].linkID == 255)
+            {
+                return ESP8266Client(this, 0);
+                //return esp8266.tcpConnect(0, destination, port, keepAlive);
+            }
+            
+            else  return ESP8266Client(); //no sockets available
+
+    }
+}
+
+// Private Methods
+uint8_t ESP8266Class::GetOpenSocket()
+{
+    esp8266.updateStatus();
+    if(mux == ESP_MUX_MULTI)
+    {
+        for (int i = 0; i < ESP8266_MAX_SOCK_NUM; i++)
+        {
+            if (esp8266._status.ipstatus[i].linkID == 255)
+            {
+                return i;
+            }
+        }
+    }
+    
+    else if (esp8266._status.ipstatus[0].linkID == 255)
+    {
+        return i;
+    }
+
+}
 
 int16_t ESP8266Class::tcpConnect(uint8_t linkID, const char * destination, uint16_t port, uint16_t keepAlive)
 {

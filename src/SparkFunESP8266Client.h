@@ -25,12 +25,21 @@ Distributed as-is; no warranty is given.
 #include <IPAddress.h>
 #include "Client.h"
 #include "SparkFunESP8266WiFi.h"
+#include "ESP8266_defines.h"
 
-class ESP8266Client : public Client {
-	
+class ESP8266Class;
+
+class ESP8266Client : public Client
+{
+protected:
+    ESP8266Class* pESP8266 = NULL;
+    
+    esp8266_ipstatus cxnStatus;
+    
 public:
 	ESP8266Client();
 	ESP8266Client(uint8_t sock);
+    ESP8266Client(ESP8266Class* esp, uint8_t sock) : pESP8266(esp), _socket(sock) {}
 
 	uint8_t status();
 	
