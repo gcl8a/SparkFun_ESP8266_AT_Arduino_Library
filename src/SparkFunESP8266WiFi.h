@@ -23,7 +23,6 @@ Distributed as-is; no warranty is given.
 
 #include <Arduino.h>
 #include <IPAddress.h>
-#include "SparkFunESP8266Client.h"
 #include "ESP8266_defines.h"
 
 enum ESPState {ESP_IDLE = 0, ESP_CMD, ESP_COMM};
@@ -31,12 +30,7 @@ enum ESPState {ESP_IDLE = 0, ESP_CMD, ESP_COMM};
 class ESP8266Class : public Stream
 {
 protected:
-    ESPState state = ESP_IDLE;
-    
     Stream* _serial;
-    //unsigned long _baud;
-    
-    Client* sockets[ESP8266_MAX_SOCK_NUM];
     
     int16_t tcpRecvCount = 0; //for tcpReceive(); must be signed to accommodate error codes
     esp8266_rec_state recState = ESP8266_REC_CLOSED;
@@ -46,13 +40,11 @@ protected:
     ////////////////////////
     char esp8266RxBuffer[ESP8266_RX_BUFFER_LEN];
     uint16_t bufferHead = 0; // Holds position of latest byte placed in buffer.
-    
-    int16_t _state[ESP8266_MAX_SOCK_NUM];
-    
+        
 public:
 	ESP8266Class();
 	
-    bool begin(unsigned long baudRate, Stream* ser);
+    bool begin(Stream* ser);
 
 	///////////////////////
 	// Basic AT Commands //
@@ -61,7 +53,6 @@ public:
 	bool reset();
 	int16_t getVersion(char * ATversion, char * SDKversion, char * compileTime);
 	bool echo(bool enable);
-	bool setBaud(unsigned long baud);
 	
 	////////////////////
 	// WiFi Functions //
@@ -69,8 +60,7 @@ public:
 	int16_t getMode();
 	int16_t setMode(esp8266_wifi_mode mode);
 	int16_t setMode(int8_t mode);
-	int16_t connect(const char * ssid);
-	int16_t connect(const char * ssid, const char * pwd);
+	int16_t connect(const char * ssid, const char * pwd = "");
 	int16_t getAP(char * ssid);
 	int16_t localMAC(char * mac);
 	int16_t disconnect();
@@ -78,16 +68,15 @@ public:
 	
 	/////////////////////
 	// TCP/IP Commands //
-	/////////////////////
-    ESP8266Client GetClient(const char * destination, uint16_t port, uint16_t keepAlive);
-    
+	/////////////////////    
 	int16_t status();
 	int16_t updateStatus();
-	int16_t tcpConnect(uint8_t linkID, const char * destination, uint16_t port, uint16_t keepAlive);
-	int16_t tcpSend(uint8_t linkID, const uint8_t *buf, size_t size);
-    int16_t tcpReceive(uint8_t linkID, char* buffer, uint16_t buffer_len, uint32_t timeout = TCP_RECEIVE_TIMEOUT);
+	int16_t tcpConnect(const char * destination, uint16_t port, uint16_t keepAlive = 0);
+	int16_t tcpSend(const char *buf, size_t size);
+    int16_t tcpReceive(char* buffer, uint16_t buffer_len, uint32_t timeout = TCP_RECEIVE_TIMEOUT);
 
-	int16_t close(uint8_t linkID);
+    uint8_t connected(void);
+	int16_t close(void);
 	int16_t setTransferMode(uint8_t mode);
 	int16_t setMux(uint8_t mux);
 	int16_t configureTCPServer(uint16_t port, uint8_t create = 1);
@@ -139,8 +128,6 @@ private:
 	char * searchBuffer(const char * test);
 	
 	esp8266_status _status;
-	
-	//uint8_t sync();
 };
 
 extern ESP8266Class esp8266;

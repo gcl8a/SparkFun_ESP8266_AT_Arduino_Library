@@ -21,44 +21,35 @@ Distributed as-is; no warranty is given.
 #include <SparkFunESP8266WiFi.h>
 #include <Arduino.h>
 #include "util/ESP8266_AT.h"
-#include "SparkFunESP8266Client.h"
-
-#define ESP8266_DISABLE_ECHO
 
 ////////////////////
 // Initialization //
 ////////////////////
 
 ESP8266Class::ESP8266Class()
-{
-	for (int i=0; i<ESP8266_MAX_SOCK_NUM; i++)
-		_state[i] = AVAILABLE;
-}
+{}
 
 //up to the user to start the Serial of his or her choice
-bool ESP8266Class::begin(unsigned long baudRate, Stream* ser)
+bool ESP8266Class::begin(Stream* ser)
 {
-    //_baud = baudRate;
     _serial = ser;
     
-    if (test())
+    if(!test())
     {
-        if (!setMux(1))
-            return false;
-#ifdef ESP8266_DISABLE_ECHO
-        if (!echo(false))
-            return false;
-#endif
-        return true;
+        print("+++"); //chance we're stuck in TCPSEND transparent
+        delay(1000);
+        if(!test()) return false;
     }
-    
-    return false;
+    if(!setMux(0)) return false;    //disable mux -- just one cxn
+    if(!echo(false)) return false;  //disable echo
+    if(!setTransferMode(true)) return false;     //set to transparent mode
+
+    return true;
 }
 
 ///////////////////////
 // Basic AT Commands //
 ///////////////////////
-
 bool ESP8266Class::test()
 {
 	sendCommand(ESP8266_TEST); // Send AT
@@ -85,25 +76,6 @@ bool ESP8266Class::echo(bool enable)
 		sendCommand(ESP8266_ECHO_ENABLE);
 	else
 		sendCommand(ESP8266_ECHO_DISABLE);
-	
-	if (readForResponse(RESPONSE_OK, COMMAND_RESPONSE_TIMEOUT) > 0)
-		return true;
-	
-	return false;
-}
-
-bool ESP8266Class::setBaud(unsigned long baud)
-{
-	char parameters[16];
-	memset(parameters, 0, 16);
-	// Constrain parameters:
-	baud = constrain(baud, 110, 115200);
-	
-	// Put parameters into string
-	sprintf(parameters, "%lu,8,1,0,0", baud);
-	
-	// Send AT+UART=baud,databits,stopbits,parity,flowcontrol
-	sendCommand(ESP8266_UART, ESP8266_CMD_SETUP, parameters);
 	
 	if (readForResponse(RESPONSE_OK, COMMAND_RESPONSE_TIMEOUT) > 0)
 		return true;
@@ -199,11 +171,6 @@ int16_t ESP8266Class::setMode(esp8266_wifi_mode mode)
 	return readForResponse(RESPONSE_OK, COMMAND_RESPONSE_TIMEOUT);
 }
 
-int16_t ESP8266Class::connect(const char * ssid)
-{
-	return connect(ssid, "");
-}
-
 // connect()
 // Input: ssid and pwd const char's
 // Output:
@@ -211,19 +178,19 @@ int16_t ESP8266Class::connect(const char * ssid)
 //    - Fail: <0 (esp8266_cmd_rsp)
 int16_t ESP8266Class::connect(const char * ssid, const char * pwd)
 {
-	/*_serial->*/print("AT");
-	/*_serial->*/print(ESP8266_CONNECT_AP);
-	/*_serial->*/print("=\"");
-	/*_serial->*/print(ssid);
-	/*_serial->*/print("\"");
+	print("AT");
+	print(ESP8266_CONNECT_AP);
+	print("=\"");
+	print(ssid);
+	print("\"");
 	if (pwd != NULL)
 	{
-		/*_serial->*/print(',');
-		/*_serial->*/print("\"");
-		/*_serial->*/print(pwd);
-		/*_serial->*/print("\"");
+		print(',');
+		print("\"");
+		print(pwd);
+		print("\"");
 	}
-	/*_serial->*/print("\r\n");
+	print("\r\n");
 	
 	return readForResponses(RESPONSE_OK, RESPONSE_FAIL, WIFI_CONNECT_TIMEOUT);
 }
@@ -284,17 +251,7 @@ int16_t ESP8266Class::status()
 	int16_t statusRet = updateStatus();
 	if (statusRet > 0)
 	{
-		switch (_status.stat)
-		{
-		case ESP8266_STATUS_GOTIP: // 3
-		case ESP8266_STATUS_DISCONNECTED: // 4 - "Client" disconnected, not wifi
-			return 1;
-			break;
-		case ESP8266_STATUS_CONNECTED: // Connected, but haven't gotten an IP
-		case ESP8266_STATUS_NOWIFI: // No WiFi configured
-			return 0;
-			break;
-		}
+        return _status.stat;
 	}
 	return statusRet;
 }
@@ -319,65 +276,65 @@ int16_t ESP8266Class::updateStatus()
 		p += strlen("STATUS:");
 		_status.stat = (esp8266_connect_status)(*p - 48);
 		
-		for (int i=0; i<ESP8266_MAX_SOCK_NUM; i++)
-		{
-			p = strstr(p, "+CIPSTATUS:");
-			if (p == NULL)
-			{
-				// Didn't find any IPSTATUS'. Set linkID to 255.
-				for (int j=i; j<ESP8266_MAX_SOCK_NUM; j++)
-					_status.ipstatus[j].linkID = 255;
-				return rsp;
-			}
-			else
-			{
-				p += strlen("+CIPSTATUS:");
-				// Find linkID:
-				uint8_t linkId = *p - 48;
-				if (linkId >= ESP8266_MAX_SOCK_NUM)
-					return rsp;
-				_status.ipstatus[linkId].linkID = linkId;
-				
-				// Find type (p pointing at linkID):
-				p += 3; // Move p to either "T" or "U"
-				if (*p == 'T')
-					_status.ipstatus[linkId].type = ESP8266_TCP;
-				else if (*p == 'U')
-					_status.ipstatus[linkId].type = ESP8266_UDP;
-				else
-					_status.ipstatus[linkId].type = ESP8266_TYPE_UNDEFINED;
-				
-				// Find remoteIP (p pointing at first letter or type):
-				p += 6; // Move p to first digit of first octet.
-				for (uint8_t j = 0; j < 4; j++)
-				{
-					char tempOctet[4];
-					memset(tempOctet, 0, 4); // Clear tempOctet
-					
-					size_t octetLength = strspn(p, "0123456789"); // Find length of numerical string:
-					
-					strncpy(tempOctet, p, octetLength); // Copy string to temp char array:
-					_status.ipstatus[linkId].remoteIP[j] = atoi(tempOctet); // Move the temp char into IP Address octet
-					
-					p += (octetLength + 1); // Increment p to next octet
-				}
-				
-				// Find port (p pointing at ',' between IP and port:
-				p += 1; // Move p to first digit of port
-				char tempPort[6];
-				memset(tempPort, 0, 6);
-				size_t portLen = strspn(p, "0123456789"); // Find length of numerical string:
-				strncpy(tempPort, p, portLen);
-				_status.ipstatus[linkId].port = atoi(tempPort);
-				p += portLen + 1;
-				
-				// Find tetype (p pointing at tetype)
-				if (*p == '0')
-					_status.ipstatus[linkId].tetype = ESP8266_CLIENT;
-				else if (*p == '1')
-					_status.ipstatus[linkId].tetype = ESP8266_SERVER;
-			}
-		}
+//        for (int i=0; i<ESP8266_MAX_SOCK_NUM; i++)
+//        {
+//            p = strstr(p, "+CIPSTATUS:");
+//            if (p == NULL)
+//            {
+//                // Didn't find any IPSTATUS'. Set linkID to 255.
+//                for (int j=i; j<ESP8266_MAX_SOCK_NUM; j++)
+//                    _status.ipstatus[j].linkID = 255;
+//                return rsp;
+//            }
+//            else
+//            {
+//                p += strlen("+CIPSTATUS:");
+//                // Find linkID:
+//                uint8_t linkId = *p - 48;
+//                if (linkId >= ESP8266_MAX_SOCK_NUM)
+//                    return rsp;
+//                _status.ipstatus[linkId].linkID = linkId;
+//                
+//                // Find type (p pointing at linkID):
+//                p += 3; // Move p to either "T" or "U"
+//                if (*p == 'T')
+//                    _status.ipstatus[linkId].type = ESP8266_TCP;
+//                else if (*p == 'U')
+//                    _status.ipstatus[linkId].type = ESP8266_UDP;
+//                else
+//                    _status.ipstatus[linkId].type = ESP8266_TYPE_UNDEFINED;
+//                
+//                // Find remoteIP (p pointing at first letter or type):
+//                p += 6; // Move p to first digit of first octet.
+//                for (uint8_t j = 0; j < 4; j++)
+//                {
+//                    char tempOctet[4];
+//                    memset(tempOctet, 0, 4); // Clear tempOctet
+//                    
+//                    size_t octetLength = strspn(p, "0123456789"); // Find length of numerical string:
+//                    
+//                    strncpy(tempOctet, p, octetLength); // Copy string to temp char array:
+//                    _status.ipstatus[linkId].remoteIP[j] = atoi(tempOctet); // Move the temp char into IP Address octet
+//                    
+//                    p += (octetLength + 1); // Increment p to next octet
+//                }
+//                
+//                // Find port (p pointing at ',' between IP and port:
+//                p += 1; // Move p to first digit of port
+//                char tempPort[6];
+//                memset(tempPort, 0, 6);
+//                size_t portLen = strspn(p, "0123456789"); // Find length of numerical string:
+//                strncpy(tempPort, p, portLen);
+//                _status.ipstatus[linkId].port = atoi(tempPort);
+//                p += portLen + 1;
+//                
+//                // Find tetype (p pointing at tetype)
+//                if (*p == '0')
+//                    _status.ipstatus[linkId].tetype = ESP8266_CLIENT;
+//                else if (*p == '1')
+//                    _status.ipstatus[linkId].tetype = ESP8266_SERVER;
+//            }
+//        }
 	}
 	
 	return rsp;
@@ -454,57 +411,13 @@ int16_t ESP8266Class::localMAC(char * mac)
 /////////////////////
 // TCP/IP Commands //
 /////////////////////
-ESP8266Client ESP8266Class::tcpConnect(const char * destination, uint16_t port, uint16_t keepAlive)
-{
-    if(state != ESP_CMD) return ESP8266Client(); //not in interactive command mode; don't even try
-    
-    //need to read mux state...for now, we're doing single cxn
-    
-    esp8266.updateStatus();
-
-//    if(mux == ESP_MUX_MULTI) return ESP8266Client();
-//    else
-    {
-            if(_status.ipstatus[0].linkID == 255)
-            {
-                return ESP8266Client(this, 0);
-                //return esp8266.tcpConnect(0, destination, port, keepAlive);
-            }
-            
-            else  return ESP8266Client(); //no sockets available
-
-    }
-}
-
-// Private Methods
-uint8_t ESP8266Class::GetOpenSocket()
-{
-    esp8266.updateStatus();
-    if(mux == ESP_MUX_MULTI)
-    {
-        for (int i = 0; i < ESP8266_MAX_SOCK_NUM; i++)
-        {
-            if (esp8266._status.ipstatus[i].linkID == 255)
-            {
-                return i;
-            }
-        }
-    }
-    
-    else if (esp8266._status.ipstatus[0].linkID == 255)
-    {
-        return i;
-    }
-
-}
-
-int16_t ESP8266Class::tcpConnect(uint8_t linkID, const char * destination, uint16_t port, uint16_t keepAlive)
+int16_t ESP8266Class::tcpConnect(const char * destination, uint16_t port, uint16_t keepAlive)
 {
 	print("AT");
 	print(ESP8266_TCP_CONNECT);
-	print('=');
-	print(linkID);
-	print(',');
+    print('=');
+//    print(linkID);
+//    print(',');
 	print("\"TCP\",");
 	print("\"");
 	print(destination);
@@ -537,7 +450,7 @@ int16_t ESP8266Class::tcpConnect(uint8_t linkID, const char * destination, uint1
 	return 1;
 }
 
-int16_t ESP8266Class::tcpSend(uint8_t linkID, const uint8_t *buf, size_t size)
+int16_t ESP8266Class::tcpSend(const char* buf, size_t size)
 {
     //need to be put in a better spot...
     tcpRecvCount = 0;
@@ -545,30 +458,20 @@ int16_t ESP8266Class::tcpSend(uint8_t linkID, const uint8_t *buf, size_t size)
     
     if (size > 2048)
         return ESP8266_CMD_BAD;
-    char params[8];
-    sprintf(params, "%d,%d", linkID, size);
-    sendCommand(ESP8266_TCP_SEND, ESP8266_CMD_SETUP, params);
+
+    sendCommand(ESP8266_TCP_SEND);
+    delay(50);
+    print((const char *)buf);
+    delay(50);
+    print("+++");
     
-    int16_t rsp = readForResponses(RESPONSE_OK, RESPONSE_ERROR, COMMAND_RESPONSE_TIMEOUT);
-    //if (rsp > 0)
-    if (rsp != ESP8266_RSP_FAIL)
-    {
-        print((const char *)buf);
-        
-        rsp = readForResponse("SEND OK", COMMAND_RESPONSE_TIMEOUT);
-        
-        if (rsp > 0)
-            return size;
-    }
-    
-    return rsp;
+    return 1;
 }
 
 /*
- * tcpReceive captures input line-by-line (almost -- it deals with +IPD commands separately)
+ * tcpReceive captures input line-by-line
  */
-
-int16_t ESP8266Class::tcpReceive(uint8_t linkID, char* buffer, uint16_t buffer_len, uint32_t timeout)
+int16_t ESP8266Class::tcpReceive(char* buffer, uint16_t buffer_len, uint32_t timeout)
 {
     clearBuffer();
     uint32_t lastRead = millis();
@@ -587,73 +490,14 @@ int16_t ESP8266Class::tcpReceive(uint8_t linkID, char* buffer, uint16_t buffer_l
 
             lastRead = millis();
 
-            char* ipd = NULL;
-            
-            switch(recState)
+            if(c == '\n')
             {
-                case ESP8266_REC_WAITING: //waiting for either an IPD signal or CLOSED (anything else???)
-                    //search for IPD
-                    ipd = strstr(esp8266RxBuffer, "+IPD");
-                    if(ipd)
-                    {
-                        //we have an IPD signal, so clear the buffer and prepare to get the byte count
-                        clearBuffer();
-                        recState = ESP8266_REC_IPD;
-                    }
-                    
-                    else if(c == '\n') //we've gotten a complete line with no IPD => done
-                    {
-                        //see if we got a CLOSED signal
-                        if(strstr(esp8266RxBuffer, "CLOSED"))
-                        {
-                            //socket is closed for us
-                            recState = ESP8266_REC_CLOSED;
-                            //TODO: should also clear the socket
-                            return 0; ///////????
-                        }
-                        
-                        //otherwise, just return whatever we have, which could be as little as \r\n
-                        //if there is nothing else, it'll timeout next time through
-                        else
-                        {
-                            memset(buffer, '\0', buffer_len);
-                            memcpy(buffer, esp8266RxBuffer, strlen(esp8266RxBuffer)); //CAREFUL on length!!!
-                            
-                            return strlen(esp8266RxBuffer);
-                        }
-                    }
-                    break;
-                    
-                case ESP8266_REC_IPD: //need to get the character count
-                    // for the moment, assume string has the form: +IPD,0,###:
-                    // where number of # digits is unknown
-                    if(strstr(esp8266RxBuffer, ":")) //a bit ugly, but should work to get up to the colon
-                    {
-                        tcpRecvCount = atoi(&esp8266RxBuffer[3]); //atoi automatically breaks out at ':'
-                        clearBuffer();
-                        recState = ESP8266_REC_RECEIVING; //switch to receiving data
-                    }
-                    break;
-                    
-                case ESP8266_REC_RECEIVING:
-                    tcpRecvCount--;
-                    if(!tcpRecvCount) //finished this block; need to check for another IPD
-                    {
-                        recState = ESP8266_REC_WAITING;
-                    }
-                    
-                    if(c == '\n' || !tcpRecvCount) //we've gotten a complete line, or we're done, so return buffer
-                    {
-                        memset(buffer, '\0', buffer_len);
-                        memcpy(buffer, esp8266RxBuffer, strlen(esp8266RxBuffer)); //CAREFUL on length!!!
-                        
-                        return strlen(esp8266RxBuffer);
-                    }
-                    break;
-                    
-                case ESP8266_REC_CLOSED: //anything special here?
-                default:
-                    return ESP8266_RSP_FAIL; //something is seriously wrong if we get here...
+                //return whatever we have, which could be as little as \r\n
+                //if there is nothing else, it'll timeout next time through
+                memset(buffer, '\0', buffer_len);
+                memcpy(buffer, esp8266RxBuffer, strlen(esp8266RxBuffer)); //CAREFUL on length!!!
+                
+                return strlen(esp8266RxBuffer);
             }
         }
     }
@@ -661,11 +505,14 @@ int16_t ESP8266Class::tcpReceive(uint8_t linkID, char* buffer, uint16_t buffer_l
     return ESP8266_RSP_TIMEOUT;
 }
 
-int16_t ESP8266Class::close(uint8_t linkID)
+uint8_t ESP8266Class::connected(void) //tcp cxn, not wifi
 {
-	char params[2];
-	sprintf(params, "%d", linkID);
-	sendCommand(ESP8266_TCP_CLOSE, ESP8266_CMD_SETUP, params);
+    return (status() == ESP8266_STATUS_CONNECTED);
+}
+
+int16_t ESP8266Class::close(void)
+{
+	sendCommand(ESP8266_TCP_CLOSE);
 	
 	// Eh, client virtual function doesn't have a return value.
 	// We'll wait for the OK or timeout anyway.
@@ -688,105 +535,6 @@ int16_t ESP8266Class::setMux(uint8_t mux)
 	sendCommand(ESP8266_TCP_MULTIPLE, ESP8266_CMD_SETUP, params);
 	
 	return readForResponse(RESPONSE_OK, COMMAND_RESPONSE_TIMEOUT);
-}
-
-int16_t ESP8266Class::configureTCPServer(uint16_t port, uint8_t create)
-{
-	char params[10];
-	if (create > 1) create = 1;
-	sprintf(params, "%d,%d", create, port);
-	sendCommand(ESP8266_SERVER_CONFIG, ESP8266_CMD_SETUP, params);
-	
-	return readForResponse(RESPONSE_OK, COMMAND_RESPONSE_TIMEOUT);	
-}
-
-int16_t ESP8266Class::ping(IPAddress ip)
-{
-	char ipStr[17];
-	sprintf(ipStr, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-	return ping(ipStr);
-}
-
-int16_t ESP8266Class::ping(char * server)
-{
-	char params[strlen(server) + 3];
-	sprintf(params, "\"%s\"", server);
-	// Send AT+Ping=<server>
-	sendCommand(ESP8266_PING, ESP8266_CMD_SETUP, params); 
-	// Example responses:
-	//  * Good response: +12\r\n\r\nOK\r\n
-	//  * Timeout response: +timeout\r\n\r\nERROR\r\n
-	//  * Error response (unreachable): ERROR\r\n\r\n
-	int16_t rsp = readForResponses(RESPONSE_OK, RESPONSE_ERROR, COMMAND_PING_TIMEOUT);
-	if (rsp > 0)
-	{
-		char * p = searchBuffer("+");
-		p += 1; // Move p forward 1 space
-		char * q = strchr(p, '\r'); // Find the first \r
-		if (q == NULL)
-			return ESP8266_RSP_UNKNOWN;
-		char tempRsp[10];
-		strncpy(tempRsp, p, q - p);
-		return atoi(tempRsp);
-	}
-	else
-	{
-		if (searchBuffer("timeout") != NULL)
-			return 0;
-	}
-	
-	return rsp;
-}
-
-//////////////////////////
-// Custom GPIO Commands //
-//////////////////////////
-int16_t ESP8266Class::pinMode(uint8_t pin, uint8_t mode)
-{
-	char params[5];
-	
-	char modeC = 'i'; // Default mode to input
-	if (mode == OUTPUT) 
-		modeC = 'o'; // o = OUTPUT
-	else if (mode == INPUT_PULLUP) 
-		modeC = 'p'; // p = INPUT_PULLUP
-	
-	sprintf(params, "%d,%c", pin, modeC);
-	sendCommand(ESP8266_PINMODE, ESP8266_CMD_SETUP, params);
-	
-	return readForResponses(RESPONSE_OK, RESPONSE_ERROR, COMMAND_RESPONSE_TIMEOUT);
-}
-
-int16_t ESP8266Class::digitalWrite(uint8_t pin, uint8_t state)
-{
-	char params[5];
-	
-	char stateC = 'l'; // Default state to LOW
-	if (state == HIGH) 
-		stateC = 'h'; // h = HIGH
-	
-	sprintf(params, "%d,%c", pin, stateC);
-	sendCommand(ESP8266_PINWRITE, ESP8266_CMD_SETUP, params);
-	
-	return readForResponses(RESPONSE_OK, RESPONSE_ERROR, COMMAND_RESPONSE_TIMEOUT);
-}
-
-int8_t ESP8266Class::digitalRead(uint8_t pin)
-{
-	char params[3];
-	
-	sprintf(params, "%d", pin);
-	sendCommand(ESP8266_PINREAD, ESP8266_CMD_SETUP, params); // Send AT+PINREAD=n\r\n
-	// Example response: 1\r\n\r\nOK\r\n
-	if (readForResponses(RESPONSE_OK, RESPONSE_ERROR, COMMAND_RESPONSE_TIMEOUT) > 0)
-	{
-		if (strchr(esp8266RxBuffer, '0') != NULL)
-			return LOW;
-		else if (strchr(esp8266RxBuffer, '1') != NULL)
-			return HIGH;
-	}
-	
-	return -1;
 }
 
 //////////////////////////////
@@ -827,16 +575,16 @@ void ESP8266Class::flush()
 
 void ESP8266Class::sendCommand(const char * cmd, enum esp8266_command_type type, const char * params)
 {
-	/*_serial->*/print("AT");
-	/*_serial->*/print(cmd);
+	print("AT");
+	print(cmd);
 	if (type == ESP8266_CMD_QUERY)
-		/*_serial->*/print('?');
+		print('?');
 	else if (type == ESP8266_CMD_SETUP)
 	{
-		/*_serial->*/print("=");
-		/*_serial->*/print(params);
+		print("=");
+		print(params);
 	}
-	/*_serial->*/print("\r\n");
+	print("\r\n");
 }
 
 int16_t ESP8266Class::readForResponse(const char * rsp, unsigned int timeout)
@@ -858,8 +606,6 @@ int16_t ESP8266Class::readForResponse(const char * rsp, unsigned int timeout)
 	
 	if (received > 0) // If we received any characters
     {
-//        SerialUSB.print("error: ");
-//        SerialUSB.println(esp8266RxBuffer);
 		return ESP8266_RSP_UNKNOWN; // Return unkown response error code
     }
 	else // If we haven't received any characters
@@ -907,8 +653,7 @@ void ESP8266Class::clearBuffer()
 char ESP8266Class::readByteToBuffer(int8_t& errorCode) //add char*?
 {
     // Read the data in
-    char c = /*_serial->*/read();
-    //SerialUSB.print(c);
+    char c = read();
     
     // Store the data in the buffer
     esp8266RxBuffer[bufferHead++] = c;
@@ -923,10 +668,10 @@ char ESP8266Class::readByteToBuffer(int8_t& errorCode) //add char*?
     return c;
 }
 
-uint8_t ESP8266Class::readByteToBuffer() //add char*?
+uint8_t ESP8266Class::readByteToBuffer(void) //add char*?
 {
     // Read the data in
-    char c = /*_serial->*/read();
+    char c = read();
     
     // Store the data in the buffer
     esp8266RxBuffer[bufferHead++] = c;
@@ -934,7 +679,6 @@ uint8_t ESP8266Class::readByteToBuffer() //add char*?
     if(bufferHead == ESP8266_RX_BUFFER_LEN - 1)
     {
         bufferHead--; //reached overflow; all new data will just overwrites at the end
-        return ESP8266_BUF_OVF; //let the caller know
     }
     
     return 1;
@@ -942,22 +686,7 @@ uint8_t ESP8266Class::readByteToBuffer() //add char*?
 
 char * ESP8266Class::searchBuffer(const char * test)
 {
-//    int bufferLen = strlen((const char *)esp8266RxBuffer);
-//    // If our buffer isn't full, just do an strstr
-//    if (bufferLen < ESP8266_RX_BUFFER_LEN)
     return strstr(esp8266RxBuffer, test); //gcl: removed (const char*) cast -- not sure why it was needed
-//    else
-//    {    //! TODO
-//        // If the buffer is full, we need to search from the end of the 
-//        // buffer back to the beginning.
-//        int testLen = strlen(test);
-//        for (int i=0; i<ESP8266_RX_BUFFER_LEN; i++)
-//        {
-//            
-//        }
-//    }
-//    
-//    return '\0'; //have to return something!
 }
 
 ESP8266Class esp8266;
