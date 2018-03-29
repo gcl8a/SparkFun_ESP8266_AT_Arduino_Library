@@ -460,11 +460,22 @@ int16_t ESP8266Class::tcpBeginTransmission(void)
     return 1;
 }
 
-int16_t ESP8266Class::tcpSendPacket(const char* buf, size_t size)
+int16_t ESP8266Class::tcpSendPacket(const char* buf)
 {
-    if(size > 2048) return 0; //too big
+    if(strlen(buf) > 2048) return 0; //too big
     print((const char *)buf);
+    
+    //need a short delay between packets
+    delay(50);
+    
+    return 1;
+}
 
+int16_t ESP8266Class::tcpSendPacket(const String& str)
+{
+    if(str.length() > 2048) return 0; //too big
+    print(str);
+    
     //need a short delay between packets
     delay(50);
     

@@ -73,7 +73,9 @@ public:
 	int16_t updateStatus();
 	int16_t tcpConnect(const char * destination, uint16_t port, uint16_t keepAlive = 0);
     int16_t tcpBeginTransmission(void);
-    int16_t tcpSendPacket(const char *buf, size_t size);
+    //int16_t tcpSendPacket(const char *buf, size_t size);
+    int16_t tcpSendPacket(const char *buf);
+    int16_t tcpSendPacket(const String&);
     int16_t tcpEndTransmission(void);
     int16_t tcpReceive(char* buffer, uint16_t buffer_len, uint32_t timeout = TCP_RECEIVE_TIMEOUT);
 
