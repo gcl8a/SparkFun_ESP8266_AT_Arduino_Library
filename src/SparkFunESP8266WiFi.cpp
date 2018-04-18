@@ -241,6 +241,11 @@ int16_t ESP8266Class::disconnect()
 	return rsp;
 }
 
+uint8_t ESP8266Class::connected(void) //tcp cxn, not wifi
+{
+    return (status() == ESP8266_STATUS_CONNECTED);
+}
+
 // status()
 // Input: none
 // Output:
@@ -526,11 +531,6 @@ int16_t ESP8266Class::tcpReceive(char* buffer, uint16_t buffer_len, uint32_t tim
     return ESP8266_RSP_TIMEOUT;
 }
 
-uint8_t ESP8266Class::connected(void) //tcp cxn, not wifi
-{
-    return (status() == ESP8266_STATUS_CONNECTED);
-}
-
 int16_t ESP8266Class::close(void)
 {
 	sendCommand(ESP8266_TCP_CLOSE);
@@ -564,7 +564,9 @@ int16_t ESP8266Class::setMux(uint8_t mux)
 
 size_t ESP8266Class::write(uint8_t c)
 {
-    //SerialUSB.print((char)c);
+//    SerialUSB.print('(');
+//    SerialUSB.print((char)c);
+//    SerialUSB.print(')');
 	return _serial->write(c);
 }
 
@@ -576,7 +578,7 @@ int ESP8266Class::available()
 int ESP8266Class::read()
 {
     int ch = _serial->read();
-    //SerialUSB.print((char)ch);
+    SerialUSB.print((char)ch);
     return ch;
 }
 
@@ -608,7 +610,7 @@ void ESP8266Class::sendCommand(const char * cmd, enum esp8266_command_type type,
 	print("\r\n");
 }
 
-int16_t ESP8266Class::readForResponse(const char * rsp, unsigned int timeout)
+int16_t ESP8266Class::readForResponse(const char * rsp, unsigned long timeout)
 {
 	unsigned long lastRead = millis();	// Timestamp coming into function
 	unsigned int received = 0; // received keeps track of number of chars read
@@ -633,7 +635,7 @@ int16_t ESP8266Class::readForResponse(const char * rsp, unsigned int timeout)
 		return ESP8266_RSP_TIMEOUT; // Return the timeout error code
 }
 
-int16_t ESP8266Class::readForResponses(const char * pass, const char * fail, unsigned int timeout)
+int16_t ESP8266Class::readForResponses(const char * pass, const char * fail, unsigned long timeout)
 {
 	unsigned long timeIn = millis();	// Timestamp coming into function
 	unsigned int received = 0; // received keeps track of number of chars read
@@ -705,9 +707,12 @@ uint8_t ESP8266Class::readByteToBuffer(void) //add char*?
     return 1;
 }
 
-char * ESP8266Class::searchBuffer(const char * test)
+char* ESP8266Class::searchBuffer(const char * test)
 {
-    return strstr(esp8266RxBuffer, test); //gcl: removed (const char*) cast -- not sure why it was needed
+//    SerialUSB.print(":");
+//    for(int i = 0; i <= bufferHead; i++) SerialUSB.print(esp8266RxBuffer[i], HEX);
+//    SerialUSB.print("\r\n");
+    return strstr(esp8266RxBuffer, test); //gcl: removed (const char*) cast -- why was it there?
 }
 
 ESP8266Class esp8266;
